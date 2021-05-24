@@ -18,6 +18,6 @@ class Descriptor:
         chans = cv2.split(image)
         res = []
         for chan in chans:
-            res.append(self.colorDescrptor.describe(chan))
+            res = res + self.colorDescrptor.describe(chan)
 
         return np.concatenate((res, hist))

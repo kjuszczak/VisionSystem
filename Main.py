@@ -2,6 +2,7 @@
 from sklearn.svm import LinearSVC
 import cv2
 import os
+import MouseHandler
 
 from Descriptor import Descriptor
 
@@ -21,7 +22,7 @@ def getAreaValueInMeters(counter, pixels):
 def runMainProcessing(barrier=None, barrierSecond=None):
     # initialize the local descriptor along with
     # the data and label lists
-    desc = Descriptor((24, 8))
+    desc = Descriptor((20, 4))
     data = []
     labels = []
 
@@ -46,7 +47,7 @@ def runMainProcessing(barrier=None, barrierSecond=None):
             data.append(desc.describe(image))
 
     # train a Linear SVM on the data
-    model = LinearSVC(C=125.0, max_iter=50000)
+    model = LinearSVC(C=250.0, max_iter=2500000)
     model.fit(data, labels)
 
     while True:
@@ -54,39 +55,61 @@ def runMainProcessing(barrier=None, barrierSecond=None):
             barrier.wait()
 
         img = cv2.imread('processing_image.jpg')
+        clone = img.copy()
 
-        pixels = 18
+        pixels = 20
 
-        height, width, channels = img.shape
-        height = int(height / pixels) * pixels
-        width = int(width / pixels) * pixels
-        img = img[0:height, 0:width]
+        MouseHandler.img = img
+        cv2.namedWindow("img")
+        cv2.setMouseCallback("img", MouseHandler.click_and_crop)
+        print("Zaznacz teren na mapie!")
+        while True:
+            # display the image and wait for a keypress
+            cv2.imshow("img", img)
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord("r"):
+                img = clone.copy()
+                MouseHandler.img = img
+            elif key == ord("c"):
+                break
+            elif len(MouseHandler.refPt) == 2:
+                cropped_img = img[MouseHandler.refPt[0][1]:MouseHandler.refPt[1][1],
+                                    MouseHandler.refPt[0][0]:MouseHandler.refPt[1][0]]
 
-        counter = 0
+                MouseHandler.refPt = []
 
-        y = 0
-        x = 0
-        while y+pixels <= height:
-            while x+pixels <= width:
-                crop_img = img[y:y+pixels, x:x+pixels]
+                height, width, channels = cropped_img.shape
+                height = int(height / pixels) * pixels
+                width = int(width / pixels) * pixels
+                print(height, width)
+                cropped_img = cropped_img[0:height, 0:width]
 
-                prediction = model.predict(desc.describe(crop_img).reshape(1, -1))
+                counter = 0
 
-                if prediction[0] == 'las':
-                    h, w, ch = crop_img.shape
-                    cv2.rectangle(crop_img, (0, 0), (w-1, h-1), (0, 0, 255), 1)
-                    cv2.putText(crop_img, '.', (5, 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                    counter = counter + 1
+                y = 0
+                x = 0
+                while y+pixels <= height:
+                    while x+pixels <= width:
+                        crop_img = cropped_img[y:y+pixels, x:x+pixels]
 
-                x = x + pixels
-            x = 0
-            y = y + pixels
+                        prediction = model.predict(desc.describe(crop_img).reshape(1, -1))
 
-        mSquare = getAreaValueInMeters(counter, pixels)
-        print('Las zajmuję: {mSquare:.2f} [metrów kwadratowych], {ar:.2f} [arów], {har:.2f} [hektarów]'.format(mSquare=mSquare, ar=mSquare/100, har=mSquare/10000))
+                        if prediction[0] == 'las':
+                            h, w, ch = crop_img.shape
+                            cv2.rectangle(crop_img, (0, 0), (w-1, h-1), (0, 0, 255), 1)
+                            cv2.putText(crop_img, '.', (5, 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                            counter = counter + 1
 
-        cv2.imshow('img', img)
-        cv2.waitKey(0)
+                        x = x + pixels
+                    x = 0
+                    y = y + pixels
+
+                mSquare = getAreaValueInMeters(counter, pixels)
+                print('Las zajmuję: {mSquare:.3f} [m^2], {ar:.3f} [ar], {har:.3f} [hektar], {km:.3f} [km^2]'.format(mSquare=mSquare, ar=mSquare/100, har=mSquare/10000, km=mSquare/1000000))
+
+        cv2.destroyAllWindows()
 
         if barrierSecond is not None:
             barrierSecond.wait()
+
+# runMainProcessing()
